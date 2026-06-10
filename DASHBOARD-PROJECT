@@ -127,7 +127,7 @@
     </main>
 
     <script>
-        // ==================== ID FILE KAMU YANG SUDAH BENAR ====================
+       // ==================== ID FILE KAMU YANG SUDAH BENAR ====================
         const EVOTY_SHEET_ID = '1W10NN9A0DJmMOvpL7dvr4p2g1BfD6sudpk58VOrZf_Q';
         const HAUS_SHEET_ID  = '19om5I4YvldCgbpJBkvaTDszEw1jF-8Hlv3VOURXneLo';
         // ============================================================================
