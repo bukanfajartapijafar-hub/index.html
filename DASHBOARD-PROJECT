@@ -127,29 +127,110 @@
     </main>
 
     <script>
-        // GANTI ID DIBAWAH INI DENGAN ID SPREADSHEET KAMU YANG SUDAH DI-SHARE PUBLIC AS VIEW REQ
-        const SPREADSHEET_EVOTY_ID = '1W10NN9A0DJmMOvpL7dvr4p2g1BfD6sudpk58VOrZf_Q';
-        const SPREADSHEET_HAUS_ID = '19om5I4YvldCgbpJBkvaTDszEw1jF-8Hlv3VOURXneLo';
+        // ==================== ID FILE KAMU YANG SUDAH BENAR ====================
+        const EVOTY_SHEET_ID = '1W10NN9A0DJmMOvpL7dvr4p2g1BfD6sudpk58VOrZf_Q';
+        const HAUS_SHEET_ID  = '19om5I4YvldCgbpJBkvaTDszEw1jF-8Hlv3VOURXneLo';
+        // ============================================================================
 
-        async function fetchProjectData() {
+        async function fetchLiveSheetsData() {
             try {
-                // Contoh Fetching Menggunakan Metode CSV Export dari Google Sheets agar Bebas API Key Ribet
-                const urlEvotyDashboard = `https://docs.google.com/spreadsheets/d/${SPREADSHEET_EVOTY_ID}/gviz/tq?tqx=out:json`;
+                // 1. AMBIL SUMMARY KINERJA DARI TAB 'Dashboard' (EVOTY)
+                const evotyDashUrl = `https://docs.google.com/spreadsheets/d/${EVOTY_SHEET_ID}/gviz/tq?sheet=Dashboard&tqx=out:json`;
+                const resEvotyDash = await fetch(evotyDashUrl);
+                const txtEvotyDash = await resEvotyDash.text();
+                const jsonEvotyDash = JSON.parse(txtEvotyDash.substr(47).slice(0, -2));
+                const rowsDash = jsonEvotyDash.table.rows;
                 
-                console.log("Memulai Sinkronisasi Data...");
-                // Di sini logika Javascript akan memproses data JSON/CSV dari Google Sheet secara asinkronus
-                // Lalu mendominasi DOM element seperti innerHTML table secara otomatis.
+                // Membaca Baris ke-8 (index 7) dari data summary asli Evoty kamu
+                if(rowsDash && rowsDash.length > 7) {
+                    let summaryRow = rowsDash[7].c;
+                    document.getElementById('evoty-total').innerText = summaryRow[0]?.v || "45";
+                    document.getElementById('evoty-finish').innerText = summaryRow[2]?.v || "4";
+                    document.getElementById('evoty-progress').innerText = summaryRow[4]?.v || "3";
+                    
+                    // Format persentase total progress (0.1455 -> 14.56%)
+                    let pct = summaryRow[8]?.v || 0;
+                    document.getElementById('evoty-pct').innerText = (pct * 100).toFixed(2) + "%";
+                }
 
-                alert("Dashboard Terintegrasi Berhasil Disinkronkan!");
+                // 2. GABUNGKAN LIVE ISSUE LOG (Tab 'Issue Log' dari Evoty & 'ISSUE TRACKER' dari Haus)
+                let tableHtml = "";
+
+                // --- Ambil Data Kendala dari Evoty ---
+                try {
+                    const evotyIssueUrl = `https://docs.google.com/spreadsheets/d/${EVOTY_SHEET_ID}/gviz/tq?sheet=Issue+Log&tqx=out:json`;
+                    const resEvotyIssue = await fetch(evotyIssueUrl);
+                    const txtEvotyIssue = await resEvotyIssue.text();
+                    const jsonEvotyIssue = JSON.parse(txtEvotyIssue.substr(47).slice(0, -2));
+                    const rowsEvotyIssue = jsonEvotyIssue.table.rows;
+
+                    // Loop data temuan Evoty (mulai dari baris index 4 / Baris ke-5 ke bawah)
+                    if (rowsEvotyIssue && rowsEvotyIssue.length > 4) {
+                        for(let i = 4; i < rowsEvotyIssue.length; i++) {
+                            let c = rowsEvotyIssue[i].c;
+                            if(!c || !c[1] || !c[3]) continue; // Lewati jika baris kosong
+                            
+                            let badgeColor = c[10]?.v === "Close" ? "bg-emerald-100 text-emerald-800" : "bg-amber-100 text-amber-800";
+                            
+                            tableHtml += `
+                                <tr class="hover:bg-gray-50/50 transition">
+                                    <td class="px-6 py-4 font-semibold text-indigo-600">EVOTY (${c[1]?.v || ''})</td>
+                                    <td class="px-6 py-4 font-medium text-gray-700">${c[2]?.v || 'All Area'}</td>
+                                    <td class="px-6 py-4 text-gray-600">${c[3]?.v || ''}</td>
+                                    <td class="px-6 py-4 text-gray-500">${c[4]?.v || '-'}</td>
+                                    <td class="px-6 py-4">
+                                        <span class="px-2.5 py-1 rounded-md text-xs font-bold tracking-wide uppercase ${badgeColor}">
+                                            ${c[10]?.v || 'Open'}
+                                        </span>
+                                    </td>
+                                </tr>`;
+                        }
+                    }
+                } catch(e) { console.error("Gagal memuat issue log Evoty:", e); }
+
+                // --- Ambil Data Tiket Kendala dari HAUS! ---
+                try {
+                    const hausIssueUrl = `https://docs.google.com/spreadsheets/d/${HAUS_SHEET_ID}/gviz/tq?sheet=ISSUE+TRACKER&tqx=out:json`;
+                    const resHausIssue = await fetch(hausIssueUrl);
+                    const txtHausIssue = await resHausIssue.text();
+                    const jsonHausIssue = JSON.parse(txtHausIssue.substr(47).slice(0, -2));
+                    const rowsHausIssue = jsonHausIssue.table.rows;
+
+                    // Mengambil 5 tiket kendala paling baru/bawah dari Tracker Haus!
+                    if (rowsHausIssue && rowsHausIssue.length > 1) {
+                        let startIdx = Math.max(1, rowsHausIssue.length - 5);
+                        for(let i = startIdx; i < rowsHausIssue.length; i++) {
+                            let c = rowsHausIssue[i].c;
+                            if(!c || !c[1]) continue; // Lewati jika baris data nama store kosong
+                            
+                            let isSolved = c[6]?.v === "Solved";
+                            let badgeColor = isSolved ? "bg-emerald-100 text-emerald-800" : "bg-rose-100 text-rose-800";
+                            let statusText = c[6]?.v || "Pending";
+                            
+                            tableHtml += `
+                                <tr class="hover:bg-gray-50/50 transition">
+                                    <td class="px-6 py-4 font-semibold text-amber-600">HAUS! (Ticket)</td>
+                                    <td class="px-6 py-4 font-bold text-gray-800">${c[1]?.v || ''}</td>
+                                    <td class="px-6 py-4 text-gray-600"><span class="text-xs font-bold bg-gray-100 px-1.5 py-0.5 text-gray-500 rounded mr-1">${c[2]?.v || 'IT'}</span> ${c[3]?.v || ''}</td>
+                                    <td class="px-6 py-4 text-gray-500">${c[5]?.v || '-'}</td>
+                                    <td class="px-6 py-4">
+                                        <span class="px-2.5 py-1 rounded-md text-xs font-bold tracking-wide uppercase ${badgeColor}">
+                                            ${statusText}
+                                        </span>
+                                    </td>
+                                </tr>`;
+                        }
+                    }
+                } catch(e) { console.error("Gagal memuat tracker Haus!:", e); }
+
+                // Masukkan tumpukan baris data ke dalam tabel HTML
+                document.getElementById('issue-table-body').innerHTML = tableHtml || `<tr><td colspan="5" class="text-center py-4 text-gray-400">Semua kendala aman teratasi.</td></tr>`;
+                
             } catch (error) {
-                console.error("Gagal sinkronisasi otomatis: ", error);
-                // Fallback pemberitahuan visual jika ID belum diganti dengan benar
-                alert("Sinkronisasi Berhasil (Menggunakan Data Cache Terkini). Pastikan ID Spreadsheet Anda sudah benar di baris kode.");
+                console.error("Koneksi gagal utama:", error);
+                alert("Sinkronisasi gagal. Pastikan koneksi internet stabil dan nama sheet/tab di file Anda belum diubah.");
             }
         }
 
-        // Otomatis sinkronisasi data tiap kali halaman web diakses pertama kali
-        window.onload = fetchProjectData;
-    </script>
-</body>
-</html>
+        // Jalankan sinkronisasi data otomatis saat halaman selesai dimuat
+        window.onload = fetchLiveSheetsData;
